@@ -3,18 +3,34 @@
 //
 #include <benchmark/benchmark.h>
 #include <generator>
+#include <iostream>
 #include "./simple_generator.h"
+#include "./batched_generator.h"
 #include "./IndirectIota.h"
 
 template <typename F>
 using R = std::remove_reference_t<std::invoke_result_t<F, size_t>>;
 
 template <typename F = std::identity>
-custom::generator<R<F>> iota_gen(F f = {}) {
+std::generator<R<F>> iota_gen(F f = {}) {
     size_t i = 0;
     while (true) {
         co_yield f(i++);
     }
+}
+
+template <typename F = std::identity>
+std::generator<std::vector<R<F>>&> iota_gen_batched(F f = {}) {
+  std::vector<R<F>> batched;
+  const size_t batchSize =  10000;
+  batched.reserve(batchSize);
+  size_t i = 0;
+  while (true) {
+    while (batched.size() < batchSize) {
+      batched.push_back(f(i++));
+    }
+    co_yield batched;
+  }
 }
 
 template<typename F = std::identity>
@@ -41,6 +57,35 @@ static void BM_IotaGen(benchmark::State& state){
         benchmark::DoNotOptimize( res= std::move(*it));
         ++it;
     }
+}
+
+template <typename F>
+static void BM_IotaGenBatched(benchmark::State& state){
+  auto gen = iota_gen_batched(F{});
+  auto it = gen.begin();
+  R<F> res{};
+  if constexpr (std::integral<R<F>>) {
+    res = -1;
+  }
+  auto batch = std::move(*it);
+  auto beg = batch.begin();
+  auto end = batch.end();
+  for (auto _ : state) {
+    auto oldRes = res;
+    benchmark::DoNotOptimize( res= std::move(*beg));
+    if constexpr (std::integral<R<F>>) {
+      if (res != oldRes + 1) {
+        std::cout << "old" << oldRes << " new " << res << std::endl;
+      }
+    }
+    ++beg;
+    if (beg == end) {
+      ++it;
+      batch = std::move(*it);
+      beg = batch.begin();
+      end = batch.end();
+    }
+  }
 }
 
 template <typename F>
@@ -103,11 +148,13 @@ using ToString = decltype(toString);
 //using ToString = decltype(toNoCopy);
 
 BENCHMARK(BM_IotaGen<std::identity>);
+BENCHMARK(BM_IotaGenBatched<std::identity>);
 BENCHMARK(BM_Iota<std::identity>);
 BENCHMARK(BM_IndirectIota);
 BENCHMARK(BM_VirtualIota);
 BENCHMARK(BM_JoinVec<std::identity>);
 
 BENCHMARK(BM_IotaGen<ToString>);
+BENCHMARK(BM_IotaGenBatched<ToString>);
 BENCHMARK(BM_Iota<ToString>);
 BENCHMARK(BM_JoinVec<ToString>);
