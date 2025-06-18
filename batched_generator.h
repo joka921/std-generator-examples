@@ -53,7 +53,7 @@ using namespace std;
  * @headerfile generator
  * @since C++23
  */
-template<typename Ref, typename Val = void>
+template<typename val>
 class generator;
 
 namespace gen {

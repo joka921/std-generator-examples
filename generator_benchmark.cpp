@@ -3,6 +3,7 @@
 //
 #include <benchmark/benchmark.h>
 #include <generator>
+#include <numeric>
 #include <iostream>
 #include "./simple_generator.h"
 #include "./batched_generator.h"
@@ -12,7 +13,7 @@ template <typename F>
 using R = std::remove_reference_t<std::invoke_result_t<F, size_t>>;
 
 template <typename F = std::identity>
-std::generator<R<F>> iota_gen(F f = {}) {
+batched::generator<R<F>> iota_gen(F f = {}) {
     size_t i = 0;
     while (true) {
         co_yield f(i++);
@@ -20,7 +21,7 @@ std::generator<R<F>> iota_gen(F f = {}) {
 }
 
 template <typename F = std::identity>
-std::generator<std::vector<R<F>>&> iota_gen_batched(F f = {}) {
+custom::generator<std::vector<R<F>>&> iota_gen_batched(F f = {}) {
   std::vector<R<F>> batched;
   const size_t batchSize =  10000;
   batched.reserve(batchSize);
@@ -67,24 +68,11 @@ static void BM_IotaGenBatched(benchmark::State& state){
   if constexpr (std::integral<R<F>>) {
     res = -1;
   }
-  auto batch = std::move(*it);
-  auto beg = batch.begin();
-  auto end = batch.end();
   for (auto _ : state) {
-    auto oldRes = res;
-    benchmark::DoNotOptimize( res= std::move(*beg));
-    if constexpr (std::integral<R<F>>) {
-      if (res != oldRes + 1) {
-        std::cout << "old" << oldRes << " new " << res << std::endl;
-      }
+    for (auto& el : *it) {
+      benchmark::DoNotOptimize( res=std::move(el));
     }
-    ++beg;
-    if (beg == end) {
-      ++it;
-      batch = std::move(*it);
-      beg = batch.begin();
-      end = batch.end();
-    }
+    ++it;
   }
 }
 
@@ -114,6 +102,13 @@ static void BM_VirtualIota(benchmark::State& state){
     for (auto _ : state) {
         benchmark::DoNotOptimize( res+= gen.get_next());
     }
+}
+
+static void BM_IndirectFunction(benchmark::State& state){
+  size_t res = 0;
+  for (auto _ : state) {
+    benchmark::DoNotOptimize( res+= indirectFunction());
+  }
 }
 
 template <typename F>
@@ -153,8 +148,9 @@ BENCHMARK(BM_Iota<std::identity>);
 BENCHMARK(BM_IndirectIota);
 BENCHMARK(BM_VirtualIota);
 BENCHMARK(BM_JoinVec<std::identity>);
+BENCHMARK(BM_IndirectFunction);
 
 BENCHMARK(BM_IotaGen<ToString>);
-BENCHMARK(BM_IotaGenBatched<ToString>);
+//BENCHMARK(BM_IotaGenBatched<ToString>);
 BENCHMARK(BM_Iota<ToString>);
 BENCHMARK(BM_JoinVec<ToString>);

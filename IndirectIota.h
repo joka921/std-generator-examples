@@ -21,5 +21,7 @@ public:
 
 std::unique_ptr<Base> makeVirtualIota();
 
+int indirectFunction();
+
 
 #endif //STD_GENERATOR_EXAMPLES_INDIRECTIOTA_H

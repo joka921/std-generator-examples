@@ -20,3 +20,7 @@ std::unique_ptr<Base> makeVirtualIota() {
     return std::make_unique<VirtualIota>();
 
 }
+
+int indirectFunction() {
+  return 42;
+}
