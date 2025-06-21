@@ -44,19 +44,11 @@ using namespace std;
  *
  * `std::generator` is a utility class for defining ranges using coroutines
  * that yield elements as a range.  Generator coroutines are synchronous.
- *
- * @headerfile generator
- * @since C++23
  */
 template<typename Ref, typename Val = void>
 class generator;
 
 namespace gen {
-/// Reference type for a generator whose reference (first argument) and
-/// value (second argument) types are Ref and Val.
-template<typename Ref, typename Val>
-using Reference_t = conditional_t<is_void_v<Val>, Ref &&, Ref>;
-
 /// Allocator and value type erased generator promise type.
 /// \tparam Yielded The corresponding generators yielded type.
 template<typename Yielded>
@@ -67,27 +59,31 @@ class Promise_erased {
   using ValuePtr = add_pointer_t<Yielded>;
 
   template<typename, typename, typename>
-  friend
-  class custom::generator;
+  friend class custom::generator;
+
+private:
+  ValuePtr M_value_ = nullptr;
+  std::exception_ptr M_except;
+
+public:
 
   struct Copy_awaiter;
 public:
   suspend_always initial_suspend() const noexcept { return {}; }
+
+  std::suspend_always final_suspend() noexcept { return {}; }
 
   suspend_always yield_value(Yielded val) noexcept {
     M_value() = std::addressof(val);
     return {};
   }
 
-  auto
-  yield_value(const Yielded_deref &val)
+  auto yield_value(const Yielded_deref &val)
   noexcept(is_nothrow_constructible_v<Yielded_decvref,
           const Yielded_deref &>) requires (is_rvalue_reference_v<Yielded>
                                             && constructible_from<Yielded_decvref,
           const Yielded_deref &>) { return Copy_awaiter(val, M_value()); }
 
-  std::suspend_always
-  final_suspend() noexcept { return {}; }
 
   void unhandled_exception() {
     this->M_except = std::current_exception();
@@ -97,11 +93,8 @@ public:
 
   void return_void() const noexcept {}
 
-private:
   ValuePtr &M_value() noexcept { return M_value_; }
 
-  ValuePtr M_value_ = nullptr;
-  std::exception_ptr M_except;
 };
 
 template<typename Yielded>
@@ -126,7 +119,7 @@ struct Promise_erased<Yielded>::Copy_awaiter {
 template<typename Ref, typename Val>
 class generator : public ranges::view_interface<generator<Ref, Val>> {
   using Value = conditional_t<is_void_v<Val>, remove_cvref_t<Ref>, Val>;
-  using Reference = gen::Reference_t<Ref, Val>;
+  using Reference = conditional_t<is_void_v<Val>, Ref &&, Ref>;
 
   using Yielded = conditional_t<is_reference_v<Reference>, Reference, const Reference &>;
   using Erased_promise = gen::Promise_erased<Yielded>;

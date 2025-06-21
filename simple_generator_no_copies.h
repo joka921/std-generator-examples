@@ -33,57 +33,53 @@
 #include <cstdint>
 #include <cstring>
 #include <coroutine>
-#include <vector>
 #include <utility>
 
 #include <type_traits>
 #include <concepts>
 
-
-namespace batched {
-
-constexpr static size_t BATCH_SIZE = 1'000;
+namespace custom {
 using namespace std;
 
 /** @brief A range specified using a yielding coroutine.
  *
  * `std::generator` is a utility class for defining ranges using coroutines
  * that yield elements as a range.  Generator coroutines are synchronous.
- *
- * @headerfile generator
- * @since C++23
  */
-template<typename val>
+template<typename Ref, typename Val = void>
 class generator;
 
-template<typename Val>
+namespace gen {
+/// Allocator and value type erased generator promise type.
+/// \tparam Yielded The corresponding generators yielded type.
+template<typename Yielded>
 class Promise_erased {
-  template<typename> friend
-  class batched::generator;
+  static_assert(is_reference_v<Yielded>);
+  using Yielded_deref = remove_reference_t<Yielded>;
+  using Yielded_decvref = remove_cvref_t<Yielded>;
+  using ValuePtr = add_pointer_t<Yielded>;
+
+  template<typename, typename, typename>
+  friend class custom::generator;
+
+private:
+  ValuePtr M_value_ = nullptr;
+  std::exception_ptr M_except;
 
 public:
   suspend_always initial_suspend() const noexcept { return {}; }
 
-  struct SuspendIfAwaiter {
-    bool suspend_;
+  std::suspend_always final_suspend() noexcept { return {}; }
 
-    constexpr bool await_ready() noexcept { return !suspend_; }
-
-    void await_suspend(std::coroutine_handle<>) noexcept {
-      return;
-    }
-
-    constexpr void
-    await_resume() const noexcept {}
-  };
-
-  template <typename T>
-  SuspendIfAwaiter yield_value(T&& val) noexcept {
-    M_buffer_.emplace_back(std::forward<T>(val));
-    return {M_buffer_.size() >= BUFSIZ};
+  suspend_always yield_value(Yielded val) noexcept {
+    M_value() = std::addressof(val);
+    return {};
   }
-  std::suspend_always
-  final_suspend() noexcept { return {}; }
+
+  auto yield_value(const Yielded_deref &val)requires (is_rvalue_reference_v<Yielded>
+                                                      && constructible_from<Yielded_decvref,
+          const Yielded_deref &>) = delete("This co_yield would silently make a copy");
+
 
   void unhandled_exception() {
     this->M_except = std::current_exception();
@@ -93,18 +89,19 @@ public:
 
   void return_void() const noexcept {}
 
-  auto& M_buffer() noexcept { return M_buffer_; }
-private:
-  std::vector<Val> M_buffer_;
-  std::exception_ptr M_except;
+  ValuePtr &M_value() noexcept { return M_value_; }
 };
 
-template< typename Val>
-class generator : public std::ranges::view_interface<generator<Val>> {
-  using Value = std::vector<Val>;
-  using Reference = Value&&;
+} // namespace gen
+/// @endcond
 
-  using Erased_promise = batched::Promise_erased<Val>;
+template<typename Ref, typename Val>
+class generator : public ranges::view_interface<generator<Ref, Val>> {
+  using Value = conditional_t<is_void_v<Val>, remove_cvref_t<Ref>, Val>;
+  using Reference = conditional_t<is_void_v<Val>, Ref &&, Ref>;
+
+  using Yielded = conditional_t<is_reference_v<Reference>, Reference, const Reference &>;
+  using Erased_promise = gen::Promise_erased<Yielded>;
   friend Erased_promise;
 
   struct Iterator;
@@ -131,7 +128,7 @@ public:
 
   Iterator begin() {
     auto h = Coro_handle::from_promise(M_coro.promise());
-    return {h, &M_coro.promise().M_buffer()};
+    return {h};
   }
 
   std::default_sentinel_t end() const noexcept { return default_sentinel; }
@@ -145,15 +142,13 @@ private:
   coroutine_handle<promise_type> M_coro;
 };
 
-template<class Val>
-struct generator<Val>::Iterator {
+template<class Ref, class Val>
+struct generator<Ref, Val>::Iterator {
   using value_type = Value;
   using difference_type = ptrdiff_t;
 
   friend bool
-  operator==(const Iterator &i, default_sentinel_t) noexcept {
-    return i.M_coro.done();
-  }
+  operator==(const Iterator &i, default_sentinel_t) noexcept { return i.M_coro.done(); }
 
   friend class generator;
 
@@ -166,7 +161,8 @@ struct generator<Val>::Iterator {
     return *this;
   }
 
-  Iterator & operator++() {
+  Iterator &
+  operator++() {
     M_coro.resume();
     return *this;
   }
@@ -177,18 +173,17 @@ struct generator<Val>::Iterator {
   Reference
   operator*()
   const noexcept(is_nothrow_move_constructible_v<Reference>) {
-    return static_cast<Reference>((*bufferPtr_)[idx_]);
+    auto &p = this->M_coro.promise();
+    return static_cast<Reference>(*p.M_value());
   }
 
 private:
   friend class generator;
 
   Iterator(Coro_handle g)
-          : M_coro{g}, { M_coro.resume(); }
+          : M_coro{g} { M_coro.resume(); }
 
   Coro_handle M_coro;
-  BufferPtr bufferPtr_;
-  size_t idx_ = 0;
 };
 
 /// @}
