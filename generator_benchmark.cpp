@@ -61,10 +61,15 @@ static void BM_IotaGenBatchedNested(benchmark::State& state){
   auto gen = iota_gen_batched(F{});
   auto it = gen.begin();
   R<F> res{};
+    size_t blubb = 0;
   for (auto _ : state) {
+      benchmark::DoNotOptimize( blubb=(*it).back());
+      /*
     for (auto& el : *it) {
+
       benchmark::DoNotOptimize( res=std::move(el));
     }
+      */
     ++it;
   }
 }
@@ -131,9 +136,10 @@ auto toString = [](size_t i) {
     return std::to_string(i);
 };
 
-//using ToString = decltype(toString);
-using ToString = decltype(toNoCopy);
+using ToString = decltype(toString);
+//using ToString = decltype(toNoCopy);
 
+BENCHMARK(BM_IotaGenBatchedNested<std::identity>);
 BENCHMARK(BM_IotaGenStd<std::identity>);
 BENCHMARK(BM_IotaGenSimple<std::identity>);
 BENCHMARK(BM_Iota<std::identity>);
@@ -143,7 +149,6 @@ BENCHMARK(BM_IndirectFunction);
 BENCHMARK(BM_IotaGenBatchedStdJoin<std::identity>);
 BENCHMARK(BM_IotaGenBatchedStdNested<std::identity>);
 BENCHMARK(BM_IotaGenBatchedJoin<std::identity>);
-BENCHMARK(BM_IotaGenBatchedNested<std::identity>);
 
 BENCHMARK(BM_IotaGenStd<ToString>);
 BENCHMARK(BM_IotaGenSimple<ToString>);

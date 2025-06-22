@@ -57,7 +57,6 @@ std::generator<std::vector<R<F>>&> iota_gen_batched_std(F f = {}) {
 
 template<typename F = std::identity>
 std::generator<std::vector<R<F>>> iota_vec_gen(F f = {}) {
-    constexpr static size_t BufSize = BufSize;
     std::vector<R<F>> buffer;
     buffer.reserve(BufSize);
     size_t i = 0;

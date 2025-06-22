@@ -3,6 +3,7 @@
 //
 
 #include "./IndirectIota.h"
+//#include <print>
 
 
 int main() {
@@ -10,6 +11,7 @@ int main() {
     size_t result = 0;
     for (auto& vec: iota_gen_batched() | std::views::take(i)) {
         result += vec.back();
+        //std::print("{}", vec.size() );
     }
     return result;
 }
