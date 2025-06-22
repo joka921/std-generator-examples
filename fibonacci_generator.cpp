@@ -14,6 +14,6 @@ std::generator<size_t> fibonacci_gen() {
 
 int main() {
     for (auto fib : fibonacci_gen() | std::views::take(10)) {
-        std::println("yielded {}", fib);
+        std::println("{}", fib);
     }
 }
