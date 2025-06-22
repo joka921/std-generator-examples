@@ -52,6 +52,7 @@ std::generator<std::vector<R<F>>&> iota_gen_batched_std(F f = {}) {
             batched.push_back(f(i++));
         }
         co_yield batched;
+        batched.clear();
     }
 }
 
