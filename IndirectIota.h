@@ -15,6 +15,8 @@
 template <typename F>
 using R = std::remove_reference_t<std::invoke_result_t<F, size_t>>;
 
+static constexpr size_t BufSize = 100;
+
 template <typename F = std::identity>
 custom::generator<R<F>> iota_gen_std(F f = {}) {
     size_t i = 0;
@@ -42,7 +44,7 @@ batched::generator<R<F>> iota_gen_batched(F f = {}) {
 template <typename F = std::identity>
 std::generator<std::vector<R<F>>&> iota_gen_batched_std(F f = {}) {
     std::vector<R<F>> batched;
-    const size_t batchSize =  10000;
+    const size_t batchSize =  BufSize;
     batched.reserve(batchSize);
     size_t i = 0;
     while (true) {
@@ -55,7 +57,7 @@ std::generator<std::vector<R<F>>&> iota_gen_batched_std(F f = {}) {
 
 template<typename F = std::identity>
 std::generator<std::vector<R<F>>> iota_vec_gen(F f = {}) {
-    constexpr static size_t BufSize = 100;
+    constexpr static size_t BufSize = BufSize;
     std::vector<R<F>> buffer;
     buffer.reserve(BufSize);
     size_t i = 0;

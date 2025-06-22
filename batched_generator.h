@@ -78,7 +78,7 @@ public:
   struct SuspendIfAwaiter {
     bool suspend_;
 
-    constexpr bool await_ready() noexcept { return !suspend_; }
+    constexpr __attribute__((always_inline)) bool await_ready() noexcept { return !suspend_; }
 
     void await_suspend(std::coroutine_handle<>) noexcept {
       return;
@@ -89,7 +89,7 @@ public:
   };
 
   template <typename T>
-  SuspendIfAwaiter yield_value(T&& val) noexcept {
+  __attribute__((always_inline)) SuspendIfAwaiter yield_value(T&& val) noexcept {
     M_buffer_.emplace_back(std::forward<T>(val));
     return {M_buffer_.size() >= BATCH_SIZE};
   }

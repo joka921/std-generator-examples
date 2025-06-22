@@ -30,3 +30,4 @@ target_link_libraries(generator_benchmark PRIVATE benchmark::benchmark_main)
 
 add_executable(fibonacci_generator fibonacci_generator.cpp)
 add_executable(expressions_main ExpressionsMain.cpp)
+add_executable(batched_main BatchedGeneratorProfile.cpp)
