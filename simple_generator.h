@@ -36,6 +36,7 @@
 
 #include <type_traits>
 #include <concepts>
+#include <utility>
 
 namespace custom {
 using namespace std;
@@ -66,7 +67,7 @@ class Promise_erased {
   using Yielded_decvref = remove_cvref_t<Yielded>;
   using ValuePtr = add_pointer_t<Yielded>;
 
-  template<typename, typename, typename>
+  template<typename, typename>
   friend
   class custom::generator;
 
@@ -165,7 +166,7 @@ private:
   using Coro_handle = std::coroutine_handle<Erased_promise>;
 
   generator(coroutine_handle<promise_type> coro) noexcept
-          : M_coro{move(coro)} {}
+          : M_coro{std::move(coro)} {}
 
   coroutine_handle<promise_type> M_coro;
 };

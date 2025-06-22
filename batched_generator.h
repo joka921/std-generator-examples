@@ -42,7 +42,7 @@
 
 namespace batched {
 
-constexpr static size_t BATCH_SIZE = 1'000;
+constexpr static size_t BATCH_SIZE = 100;
 using namespace std;
 
 /** @brief A range specified using a yielding coroutine.
@@ -66,16 +66,12 @@ using Reference_t = conditional_t<is_void_v<Val>, Ref &&, Ref>;
 /// \tparam Yielded The corresponding generators yielded type.
 template<typename Yielded>
 class Promise_erased {
-  static_assert(is_reference_v<Yielded>);
-  using Yielded_deref = remove_reference_t<Yielded>;
-  using Yielded_decvref = remove_cvref_t<Yielded>;
-  using ValuePtr = add_pointer_t<Yielded>;
+  static_assert(is_object_v<Yielded>);
 
-  template<typename, typename, typename>
+  template<typename>
   friend
-  class custom::generator;
+  class batched::generator;
 
-  struct Copy_awaiter;
 public:
   suspend_always initial_suspend() const noexcept { return {}; }
 
@@ -95,7 +91,7 @@ public:
   template <typename T>
   SuspendIfAwaiter yield_value(T&& val) noexcept {
     M_buffer_.emplace_back(std::forward<T>(val));
-    return {M_buffer_.size() >= BUFSIZ};
+    return {M_buffer_.size() >= BATCH_SIZE};
   }
   std::suspend_always
   final_suspend() noexcept { return {}; }
@@ -111,40 +107,21 @@ public:
   auto& M_buffer() noexcept { return M_buffer_; }
 private:
 
-  std::vector<Yielded_decvref> M_buffer_;
+  std::vector<Yielded> M_buffer_;
   std::exception_ptr M_except;
 };
 
 
 
-template<typename Yielded>
-struct Promise_erased<Yielded>::Copy_awaiter {
-  Yielded_decvref M_value;
-  ValuePtr &M_bottom_value;
-
-  constexpr bool await_ready() noexcept { return false; }
-
-  template<typename Promise>
-  void await_suspend(std::coroutine_handle<Promise>) noexcept {
-    M_bottom_value = ::std::addressof(M_value);
-  }
-
-  constexpr void
-  await_resume() const noexcept {}
-};
 
 
 
 } // namespace gen
 /// @endcond
 
-template<typename Ref, typename Val>
-class generator : public ranges::view_interface<generator<Ref, Val>> {
-  using Value = conditional_t<is_void_v<Val>, remove_cvref_t<Ref>, Val>;
-  using Reference = gen::Reference_t<Ref, Val>;
-
-  using Yielded = conditional_t<is_reference_v<Reference>, Reference, const Reference &>;
-  using Erased_promise = gen::Promise_erased<Yielded>;
+template<typename T>
+class generator : public ranges::view_interface<generator<T>> {
+  using Erased_promise = gen::Promise_erased<T>;
   friend Erased_promise;
 
   struct Iterator;
@@ -171,7 +148,7 @@ public:
 
   Iterator begin() {
     auto h = Coro_handle::from_promise(M_coro.promise());
-    return {h, &M_coro.promise().M_buffer()};
+    return {h};
   }
 
   std::default_sentinel_t end() const noexcept { return default_sentinel; }
@@ -180,21 +157,22 @@ private:
   using Coro_handle = std::coroutine_handle<Erased_promise>;
 
   generator(coroutine_handle<promise_type> coro) noexcept
-          : M_coro{move(coro)} {}
+          : M_coro{std::move(coro)} {}
 
   coroutine_handle<promise_type> M_coro;
 };
 
-template<class Ref, class Val>
-struct generator<Ref, Val>::Iterator {
-  using value_type = Value;
+template<class T>
+struct generator<T>::Iterator {
+  using value_type = std::vector<T>;
+  using reference  = std::vector<T>&;
   using difference_type = ptrdiff_t;
   using BufferPtr = std::add_pointer_t<std::remove_reference_t<decltype(std::declval<Coro_handle>().promise().M_buffer())>>;
 
   friend bool
-  operator==(const Iterator &i, default_sentinel_t) noexcept { return
-            i.idx_ >= i.bufferPtr_->size() &&
-            i.M_coro.done();
+  operator==(const Iterator &i, default_sentinel_t) noexcept {
+    return
+        i.M_coro.done();
   }
 
   friend class generator;
@@ -210,33 +188,26 @@ struct generator<Ref, Val>::Iterator {
 
   Iterator &
   operator++() {
-    ++idx_;
-    if (idx_ >= bufferPtr_->size()) {
-      idx_ = 0;
-      bufferPtr_->clear();
+      M_coro.promise().M_buffer().clear();
       M_coro.resume();
-    }
     return *this;
   }
 
   void
   operator++(int) { this->operator++(); }
 
-  Reference
-  operator*()
-  const noexcept(is_nothrow_move_constructible_v<Reference>) {
-    return static_cast<Reference>((*bufferPtr_)[idx_]);
+  reference operator*()
+  const noexcept {
+    return M_coro.promise().M_buffer();
   }
 
 private:
   friend class generator;
 
-  Iterator(Coro_handle g, BufferPtr ptr)
-          : M_coro{g}, bufferPtr_{ptr} { M_coro.resume(); }
+  Iterator(Coro_handle g)
+          : M_coro{g}  { M_coro.resume(); }
 
   Coro_handle M_coro;
-  BufferPtr bufferPtr_;
-  size_t idx_ = 0;
 };
 
 /// @}
